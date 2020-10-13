@@ -43,15 +43,7 @@ public class HotNodeRca extends Rca<ResourceFlowUnit<HotNodeSummary>> {
   public <R extends Rca<ResourceFlowUnit<HotResourceSummary>>> HotNodeRca(final int rcaPeriod, R... hotResourceRcas) {
     super(5);
     this.hotResourceRcas = hotResourceRcas.clone();
-    this.rcaPeriod = rcaPeriod;
-    this.counter = 0;
-    hasUnhealthyFlowUnit = false;
-  }
-
-  public <R extends Rca<ResourceFlowUnit<HotResourceSummary>>> HotNodeRca(final int rcaPeriod, Collection<R> hotResourceRcas) {
-    super(5);
-    this.hotResourceRcas = hotResourceRcas.toArray(new Rca[hotResourceRcas.size()]);
-    this.rcaPeriod = rcaPeriod;
+    this.rcaPeriod = 1;
     this.counter = 0;
     hasUnhealthyFlowUnit = false;
   }

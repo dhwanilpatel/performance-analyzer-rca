@@ -62,7 +62,7 @@ public class HighHeapUsageClusterRca extends Rca<ResourceFlowUnit<HotClusterSumm
   public <R extends Rca> HighHeapUsageClusterRca(final int rcaPeriod, final R hotNodeRca) {
     super(5);
     this.hotNodeRca = hotNodeRca;
-    this.rcaPeriod = rcaPeriod;
+    this.rcaPeriod = 1;
     this.counter = 0;
     nodeStateCache =
         CacheBuilder.newBuilder()

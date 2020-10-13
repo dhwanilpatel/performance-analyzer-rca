@@ -46,7 +46,7 @@ public abstract class Decider extends NonLeafNode<Decision> {
 
   public Decider(long evalIntervalSeconds, int decisionFrequency) {
     super(0, evalIntervalSeconds);
-    this.decisionFrequency = decisionFrequency;
+    this.decisionFrequency = 1; //decisionFrequency;
     this.rcaConf = null;
   }
 

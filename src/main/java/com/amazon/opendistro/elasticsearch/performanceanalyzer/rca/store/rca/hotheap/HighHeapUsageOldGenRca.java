@@ -84,7 +84,7 @@ public class HighHeapUsageOldGenRca extends Rca<ResourceFlowUnit<HotResourceSumm
   private final SlidingWindow<SlidingWindowData> gcEventSlidingWindow;
   private final MinOldGenSlidingWindow minOldGenSlidingWindow;
   //Keep the sliding window large enough to avoid false positive
-  private static final int SLIDING_WINDOW_SIZE_IN_MINS = 10;
+  private static final int SLIDING_WINDOW_SIZE_IN_MINS = 1;
   private static final double OLD_GEN_USED_THRESHOLD_IN_PERCENTAGE = 0.65;
   // FullGC needs to occur at least once during the entire sliding window in order to capture the
   // minimum
@@ -102,13 +102,12 @@ public class HighHeapUsageOldGenRca extends Rca<ResourceFlowUnit<HotResourceSumm
     this.gc_event = gc_event;
     this.heap_Max = heap_Max;
     this.maxOldGenHeapSize = Double.MAX_VALUE;
-    this.rcaPeriod = rcaPeriod;
+    this.rcaPeriod = 1;
     this.lowerBoundThreshold = (lowerBoundThreshold >= 0 && lowerBoundThreshold <= 1.0)
         ? lowerBoundThreshold : 1.0;
     this.counter = 0;
-    gcEventSlidingWindow = new SlidingWindow<>(SLIDING_WINDOW_SIZE_IN_MINS, TimeUnit.MINUTES);
-    minOldGenSlidingWindow = new MinOldGenSlidingWindow(SLIDING_WINDOW_SIZE_IN_MINS,
-        TimeUnit.MINUTES);
+    gcEventSlidingWindow = new SlidingWindow<>(1, TimeUnit.SECONDS);
+    minOldGenSlidingWindow = new MinOldGenSlidingWindow(1, TimeUnit.SECONDS);
     this.nodeStatAggregators = new ArrayList<>();
     for (Metric consumerMetric : consumers) {
       if (consumerMetric != null) {
@@ -193,10 +192,13 @@ public class HighHeapUsageOldGenRca extends Rca<ResourceFlowUnit<HotResourceSumm
       counter = 0;
 
       double currentMinOldGenUsage = minOldGenSlidingWindow.readMin();
+      boolean isNan = Double.isNaN(currentMinOldGenUsage);
+      double eventsInWindow = gcEventSlidingWindow.readSum();
+      double oldGenRatio = currentMinOldGenUsage / maxOldGenHeapSize;
 
-      if (gcEventSlidingWindow.readSum() >= OLD_GEN_GC_THRESHOLD
-          && !Double.isNaN(currentMinOldGenUsage)
-          && currentMinOldGenUsage / maxOldGenHeapSize > OLD_GEN_USED_THRESHOLD_IN_PERCENTAGE) {
+      if (eventsInWindow >= OLD_GEN_GC_THRESHOLD
+          && !isNan
+          && oldGenRatio > OLD_GEN_USED_THRESHOLD_IN_PERCENTAGE) {
         LOG.debug("heapUsage is above threshold. OldGGenGCEvent = {}, oldGenUsage percentage = {}",
             gcEventSlidingWindow.readSum(),
             currentMinOldGenUsage / maxOldGenHeapSize);

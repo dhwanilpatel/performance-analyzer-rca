@@ -17,11 +17,15 @@ package com.amazon.opendistro.elasticsearch.performanceanalyzer.decisionmaker.de
 
 import com.amazon.opendistro.elasticsearch.performanceanalyzer.decisionmaker.actions.Action;
 import com.amazon.opendistro.elasticsearch.performanceanalyzer.decisionmaker.actions.ModifyQueueCapacityAction;
+import com.amazon.opendistro.elasticsearch.performanceanalyzer.grpc.Resource;
 import com.amazon.opendistro.elasticsearch.performanceanalyzer.grpc.ResourceEnum;
 import com.amazon.opendistro.elasticsearch.performanceanalyzer.rca.framework.api.flow_units.ResourceFlowUnit;
 import com.amazon.opendistro.elasticsearch.performanceanalyzer.rca.framework.api.summaries.HotClusterSummary;
 import com.amazon.opendistro.elasticsearch.performanceanalyzer.rca.framework.api.summaries.HotNodeSummary;
 import com.amazon.opendistro.elasticsearch.performanceanalyzer.rca.framework.api.summaries.HotResourceSummary;
+import com.amazon.opendistro.elasticsearch.performanceanalyzer.rca.framework.api.summaries.bucket.UsageBucket;
+import com.amazon.opendistro.elasticsearch.performanceanalyzer.rca.store.rca.HighHeapUsageClusterRca;
+import com.amazon.opendistro.elasticsearch.performanceanalyzer.rca.store.rca.HotNodeClusterRca;
 import com.amazon.opendistro.elasticsearch.performanceanalyzer.rca.store.rca.cluster.NodeKey;
 import com.amazon.opendistro.elasticsearch.performanceanalyzer.rca.store.rca.cluster.QueueRejectionClusterRca;
 import java.util.ArrayList;
@@ -38,12 +42,15 @@ public class QueueHealthDecider extends Decider {
   public static final String NAME = "queue_health";
 
   private QueueRejectionClusterRca queueRejectionRca;
+  private HighHeapUsageClusterRca hotClusterRca;
   List<String> actionsByUserPriority = new ArrayList<>();
   private int counter = 0;
 
-  public QueueHealthDecider(long evalIntervalSeconds, int decisionFrequency, QueueRejectionClusterRca queueRejectionClusterRca) {
+  public QueueHealthDecider(long evalIntervalSeconds, int decisionFrequency, QueueRejectionClusterRca queueRejectionClusterRca,
+                            HighHeapUsageClusterRca highHeapUsageClusterRca) {
     super(evalIntervalSeconds, decisionFrequency);
     this.queueRejectionRca = queueRejectionClusterRca;
+    this.hotClusterRca = highHeapUsageClusterRca;
     configureActionPriority();
   }
 
@@ -76,7 +83,6 @@ public class QueueHealthDecider extends Decider {
         decision.addAction(computeBestAction(esNode, resource.getResource().getResourceEnum()));
       }
     }
-
     return decision;
   }
 
@@ -94,9 +100,30 @@ public class QueueHealthDecider extends Decider {
   private Action computeBestAction(NodeKey esNode, ResourceEnum threadPool) {
     Action action = null;
 
+    // we add action only if heap is under-utilized or healthy and yet more can be consumed.
+    for (ResourceFlowUnit<HotClusterSummary> clusterSummary: hotClusterRca.getFlowUnits()) {
+      if (clusterSummary.hasResourceSummary()) {
+        for (HotNodeSummary nodeSummary: clusterSummary.getSummary().getHotNodeSummaryList()) {
+          NodeKey thisNode = new NodeKey(nodeSummary.getNodeID(), nodeSummary.getHostAddress());
+          if (thisNode.equals(esNode)) {
+            for (HotResourceSummary hotResourceSummary: nodeSummary.getHotResourceSummaryList()) {
+              Resource resource = hotResourceSummary.getResource();
+              if (resource.getResourceEnum() == ResourceEnum.OLD_GEN) {
+                double oldGenUsedRatio = hotResourceSummary.getValue();
+                double oldGenUsedPercent = oldGenUsedRatio * 100;
+                UsageBucket bucket = rcaConf.getBucketizationSettings("old-gen").compute(oldGenUsedPercent);
+                if (bucket == UsageBucket.HEALTHY || bucket == UsageBucket.UNHEALTHY) {
+                  return null;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     for (String actionName : actionsByUserPriority) {
-      action =
-        getAction(actionName, esNode, threadPool, true);
+      action = getAction(actionName, esNode, threadPool, true);
       if (action != null) {
         break;
       }
@@ -115,9 +142,9 @@ public class QueueHealthDecider extends Decider {
 
   private ModifyQueueCapacityAction configureQueueCapacity(NodeKey esNode, ResourceEnum threadPool, boolean increase) {
     ModifyQueueCapacityAction action = ModifyQueueCapacityAction
-            .newBuilder(esNode, threadPool, getAppContext(), rcaConf)
-            .increase(increase)
-            .build();
+        .newBuilder(esNode, threadPool, getAppContext(), rcaConf)
+        .increase(increase)
+        .build();
     if (action != null && action.isActionable()) {
       return action;
     }

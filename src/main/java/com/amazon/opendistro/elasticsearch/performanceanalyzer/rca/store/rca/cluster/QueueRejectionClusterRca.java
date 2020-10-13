@@ -23,6 +23,6 @@ public class QueueRejectionClusterRca extends BaseClusterRca {
   public static final String RCA_TABLE_NAME = QueueRejectionClusterRca.class.getSimpleName();
 
   public <R extends Rca<ResourceFlowUnit<HotNodeSummary>>> QueueRejectionClusterRca(final int rcaPeriod, final R hotNodeRca) {
-    super(rcaPeriod, hotNodeRca);
+    super(1, hotNodeRca);
   }
 }
